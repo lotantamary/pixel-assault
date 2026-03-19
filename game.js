@@ -5,17 +5,19 @@
 // ============================================================
 // FIREBASE CONFIG — replace with your Realtime Database URL
 // ============================================================
-const FIREBASE_URL = 'https://pixel-assault-leaderboard-default-rtdb.firebaseio.com/';
-let leaderboard = [];  // [{name, score}] sorted desc, up to 10
+const FIREBASE_URL = 'https://pixel-assault-leaderboard-default-rtdb.firebaseio.com';
+let leaderboard = [];      // [{name, score}] sorted desc, up to 10
+let leaderboardLoaded = false;
 
 async function fetchLeaderboard() {
   try {
-    const res = await fetch(`${FIREBASE_URL}/scores.json?orderBy="score"&limitToLast=10`);
+    const res = await fetch(`${FIREBASE_URL}/scores.json`);
     if (!res.ok) return;
     const data = await res.json();
-    if (!data) { leaderboard = []; return; }
+    if (!data) { leaderboard = []; leaderboardLoaded = true; return; }
     leaderboard = Object.values(data).sort((a, b) => b.score - a.score).slice(0, 10);
-  } catch (e) { /* Firebase not configured or offline */ }
+    leaderboardLoaded = true;
+  } catch (e) { leaderboardLoaded = true; /* Firebase not configured or offline */ }
 }
 
 async function submitScore(name, score) {
@@ -1247,7 +1249,7 @@ function renderMenu() {
   if (leaderboard.length === 0) {
     ctx.fillStyle = '#555577';
     ctx.font = '13px monospace';
-    ctx.fillText('Loading...', rx, 120);
+    ctx.fillText(leaderboardLoaded ? 'No scores yet' : 'Loading...', rx, 120);
   } else {
     const rankColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
     for (let i = 0; i < leaderboard.length; i++) {
