@@ -413,6 +413,95 @@ const LEVELS = [
       {type:'brute', delay:6000},
     ]
   },
+  {
+    label: 'Level 6 — Rapid Assault',
+    spawnQueue: [
+      {type:'grunt', delay:0},
+      {type:'grunt', delay:400},
+      {type:'grunt', delay:800},
+      {type:'grunt', delay:1200},
+      {type:'grunt', delay:1600},
+      {type:'grunt', delay:2000},
+      {type:'grunt', delay:2400},
+      {type:'grunt', delay:2800},
+      {type:'grunt', delay:3200},
+      {type:'grunt', delay:3600},
+      {type:'grunt', delay:4000},
+      {type:'grunt', delay:4200},
+    ]
+  },
+  {
+    label: 'Level 7 — Heavy Metal',
+    spawnQueue: [
+      {type:'brute', delay:0},
+      {type:'brute', delay:1000},
+      {type:'brute', delay:2000},
+      {type:'brute', delay:3000},
+      {type:'grunt', delay:3500},
+      {type:'brute', delay:4000},
+      {type:'grunt', delay:4500},
+      {type:'brute', delay:5500},
+      {type:'grunt', delay:6000},
+      {type:'brute', delay:7000},
+    ]
+  },
+  {
+    label: 'Level 8 — Sniper Alley',
+    spawnQueue: [
+      {type:'grunt', delay:0},
+      {type:'shooter', delay:500},
+      {type:'shooter', delay:1000},
+      {type:'shooter', delay:1500},
+      {type:'grunt', delay:2000},
+      {type:'shooter', delay:2500},
+      {type:'shooter', delay:3000},
+      {type:'shooter', delay:3500},
+      {type:'grunt', delay:4000},
+      {type:'shooter', delay:4500},
+      {type:'shooter', delay:5000},
+      {type:'shooter', delay:5500},
+    ]
+  },
+  {
+    label: 'Level 9 — Elite Force',
+    spawnQueue: [
+      {type:'brute', delay:0},
+      {type:'shooter', delay:300},
+      {type:'shooter', delay:600},
+      {type:'brute', delay:1500},
+      {type:'shooter', delay:2000},
+      {type:'shooter', delay:2500},
+      {type:'brute', delay:3500},
+      {type:'shooter', delay:4000},
+      {type:'brute', delay:5000},
+      {type:'shooter', delay:5500},
+      {type:'brute', delay:6500},
+      {type:'shooter', delay:7000},
+    ]
+  },
+  {
+    label: 'Level 10 — Apocalypse',
+    spawnQueue: [
+      {type:'brute', delay:0},
+      {type:'grunt', delay:200},
+      {type:'shooter', delay:400},
+      {type:'grunt', delay:600},
+      {type:'brute', delay:800},
+      {type:'shooter', delay:1000},
+      {type:'grunt', delay:1200},
+      {type:'grunt', delay:1400},
+      {type:'brute', delay:1600},
+      {type:'shooter', delay:1800},
+      {type:'grunt', delay:2000},
+      {type:'brute', delay:2400},
+      {type:'shooter', delay:2800},
+      {type:'grunt', delay:3200},
+      {type:'grunt', delay:3600},
+      {type:'brute', delay:4000},
+      {type:'shooter', delay:4400},
+      {type:'grunt', delay:4800},
+    ]
+  },
 ];
 
 // ============================================================
@@ -481,6 +570,8 @@ function spawnEnemy(type) {
     animTimer: 0,
     hitFlash: 0,
     shootCooldown: type === 'shooter' ? 2000 + Math.random() * 1000 : 0,
+    knockbackVx: 0,
+    knockbackVy: 0,
   };
 }
 
@@ -569,6 +660,13 @@ function handleEnter() {
   if (game.state === 'menu') {
     game.state = 'playing';
     initGame();
+  } else if (game.state === 'victory') {
+    if (game.score > game.highScore) {
+      game.highScore = game.score;
+      localStorage.setItem('pixelAssaultHigh', game.highScore);
+    }
+    game.state = 'enterName';
+    showNameOverlay();
   } else if (game.state === 'enterName') {
     doSubmitScore();
   }
@@ -578,6 +676,13 @@ function handleClick() {
   if (game.state === 'menu') {
     game.state = 'playing';
     initGame();
+  } else if (game.state === 'victory') {
+    if (game.score > game.highScore) {
+      game.highScore = game.score;
+      localStorage.setItem('pixelAssaultHigh', game.highScore);
+    }
+    game.state = 'enterName';
+    showNameOverlay();
   }
 }
 
@@ -747,6 +852,13 @@ function updateEnemies(dt) {
       e.hitFlash -= dt * 1000;
       if (e.hitFlash < 0) e.hitFlash = 0;
     }
+
+    // Apply and decay knockback before AI movement
+    e.x += e.knockbackVx * dt;
+    e.y += e.knockbackVy * dt;
+    const kbDecay = Math.pow(0.005, dt);
+    e.knockbackVx *= kbDecay;
+    e.knockbackVy *= kbDecay;
 
     const dx = player.x - e.x;
     const dy = player.y - e.y;
@@ -919,7 +1031,11 @@ function checkCollisions(dt) {
           player.invincible = 800;
         } else {
           player.hp -= e.contactDmg * dt;
-          player.invincible = 100;
+          player.invincible = 400;
+          const kbAway = { x: e.x - player.x, y: e.y - player.y };
+          const kbLen = Math.sqrt(kbAway.x ** 2 + kbAway.y ** 2) || 1;
+          e.knockbackVx = (kbAway.x / kbLen) * 350;
+          e.knockbackVy = (kbAway.y / kbLen) * 350;
         }
       }
     }
@@ -954,12 +1070,16 @@ function checkLevelClear() {
     // Spawn heal pickup at center
     pickups.push({ x: LOGICAL_W / 2, y: LOGICAL_H / 2, sprite: 'heal', palette: 'heal' });
 
-    game.state = 'levelTransition';
-    game.transitionTimer = 3000;
-
-    // Check if we completed all 5 levels
-    if (game.level >= 5) {
+    if (game.level >= 10 && game.loopCount === 0) {
+      // First clear of all 10 levels — show victory screen
+      game.state = 'victory';
       game.loopCount++;
+    } else {
+      game.state = 'levelTransition';
+      game.transitionTimer = 3000;
+      if (game.level >= 10) {
+        game.loopCount++;
+      }
     }
   }
 }
@@ -1324,7 +1444,7 @@ function renderMenu() {
   ctx.fillText('Mouse — Aim', lx, 273);
   ctx.fillText('Left Click — Fire', lx, 291);
   ctx.fillText('P / Esc — Pause', lx, 309);
-  ctx.fillText('Survive 5 waves!', lx, 333);
+  ctx.fillText('Survive 10 waves!', lx, 333);
 
   ctx.fillStyle = '#FFEE00';
   ctx.font = '13px monospace';
@@ -1483,6 +1603,51 @@ function renderPaused() {
   ctx.textAlign = 'left';
 }
 
+function renderVictory() {
+  renderBackground();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+  ctx.textAlign = 'center';
+
+  ctx.fillStyle = '#FFEE00';
+  ctx.font = 'bold 64px monospace';
+  ctx.shadowColor = '#FF8800';
+  ctx.shadowBlur = 30;
+  ctx.fillText('YOU WIN!', LOGICAL_W / 2, 200);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#88FFAA';
+  ctx.font = '20px monospace';
+  ctx.fillText('All 10 levels cleared!', LOGICAL_W / 2, 255);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '22px monospace';
+  ctx.fillText(`SCORE: ${game.score}`, LOGICAL_W / 2, 305);
+
+  if (game.score >= game.highScore && game.score > 0) {
+    ctx.fillStyle = '#FFEE00';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('NEW HIGH SCORE!', LOGICAL_W / 2, 345);
+  } else {
+    ctx.fillStyle = '#AAAAAA';
+    ctx.font = '16px monospace';
+    ctx.fillText(`BEST: ${game.highScore}`, LOGICAL_W / 2, 345);
+  }
+
+  // Blinking prompt
+  game.blinkTimer += 16;
+  if (game.blinkTimer >= 500) { game.blinkTimer = 0; game.blinkVisible = !game.blinkVisible; }
+  if (game.blinkVisible) {
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('PRESS ENTER TO CONTINUE', LOGICAL_W / 2, 420);
+  }
+
+  ctx.textAlign = 'left';
+}
+
 // ============================================================
 // GAME LOOP
 // ============================================================
@@ -1542,6 +1707,8 @@ function gameLoop(timestamp) {
     updateLevelTransition(dt);
     updateParticles(dt);
     renderLevelTransition();
+  } else if (game.state === 'victory') {
+    renderVictory();
   } else if (game.state === 'enterName') {
     renderGameOver();
   }
