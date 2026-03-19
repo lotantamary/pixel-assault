@@ -340,6 +340,10 @@ function createPlayer() {
     invincible: 0,
     bobOffset: 0,
     moving: false,
+    // Active bonuses (ms remaining, 0 = inactive)
+    bonusRapidFire: 0,   // shoot rate halved
+    bonusSpeed: 0,       // speed increased by 80
+    bonusShield: 0,      // absorbs next hit
   };
 }
 
@@ -496,6 +500,19 @@ function emitBulletHit(x, y) {
   }
 }
 
+function pickupColor(kind) {
+  return { heal: '#66FF66', rapidfire: '#FFDD00', speed: '#44DDFF', shield: '#CC88FF' }[kind] || '#FFFFFF';
+}
+
+function emitShieldBreak(x, y) {
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const spd = 80 + Math.random() * 120;
+    particles.push(spawnParticle(x, y, Math.cos(a) * spd, Math.sin(a) * spd, 4, '#CC88FF', 500));
+  }
+  particles.push(spawnParticle(x, y, 0, 0, 18, '#FFFFFF', 120));
+}
+
 function emitEnemyDeath(x, y, color) {
   const count = 8 + Math.floor(Math.random() * 9);
   for (let i = 0; i < count; i++) {
@@ -521,8 +538,9 @@ function updatePlayer(dt) {
 
   if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
 
-  player.x = Math.max(player.radius, Math.min(LOGICAL_W - player.radius, player.x + dx * player.speed * dt));
-  player.y = Math.max(player.radius, Math.min(LOGICAL_H - player.radius, player.y + dy * player.speed * dt));
+  const effectiveSpeed = player.speed + (player.bonusSpeed > 0 ? 80 : 0);
+  player.x = Math.max(player.radius, Math.min(LOGICAL_W - player.radius, player.x + dx * effectiveSpeed * dt));
+  player.y = Math.max(player.radius, Math.min(LOGICAL_H - player.radius, player.y + dy * effectiveSpeed * dt));
 
   // Aiming
   player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
@@ -545,11 +563,17 @@ function updatePlayer(dt) {
     player.shootCooldown -= dt * 1000;
     if (player.shootCooldown < 0) player.shootCooldown = 0;
   }
+
+  // Bonus timers
+  if (player.bonusRapidFire > 0) player.bonusRapidFire = Math.max(0, player.bonusRapidFire - dt * 1000);
+  if (player.bonusSpeed > 0)     player.bonusSpeed     = Math.max(0, player.bonusSpeed     - dt * 1000);
+  if (player.bonusShield > 0)    player.bonusShield    = Math.max(0, player.bonusShield    - dt * 1000);
 }
 
 function tryShoot() {
+  const effectiveShootRate = player.bonusRapidFire > 0 ? player.shootRate / 2 : player.shootRate;
   if (mouse.down && player.shootCooldown <= 0) {
-    player.shootCooldown = player.shootRate;
+    player.shootCooldown = effectiveShootRate;
     // Gun tip offset (32px from center along angle)
     const gunLen = 36;
     const bx = player.x + Math.cos(player.angle) * gunLen;
@@ -677,6 +701,16 @@ function updateBullets(dt) {
   }
 }
 
+function updatePickups(dt) {
+  for (let i = pickups.length - 1; i >= 0; i--) {
+    const pk = pickups[i];
+    if (pk.life !== undefined) {
+      pk.life -= dt * 1000;
+      if (pk.life <= 0) pickups.splice(i, 1);
+    }
+  }
+}
+
 function updateParticles(dt) {
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
@@ -706,6 +740,13 @@ function checkCollisions(dt) {
           emitEnemyDeath(e.x, e.y, deathColors[e.type]);
           game.score += e.score;
           enemies.splice(ei, 1);
+          // Random bonus drop (25% chance; brutes always drop)
+          const dropChance = e.type === 'brute' ? 1.0 : 0.25;
+          if (Math.random() < dropChance) {
+            const types = ['rapidfire', 'speed', 'shield'];
+            const btype = types[Math.floor(Math.random() * types.length)];
+            pickups.push({ x: e.x, y: e.y, kind: btype, life: 8000 });
+          }
         }
         break;
       }
@@ -719,7 +760,12 @@ function checkCollisions(dt) {
     if (player.invincible > 0) continue;
     if (circlesOverlap(b.x, b.y, b.radius, player.x, player.y, player.radius)) {
       emitBulletHit(b.x, b.y);
-      player.hp -= b.damage;
+      if (player.bonusShield > 0) {
+        player.bonusShield = 0;
+        emitShieldBreak(player.x, player.y);
+      } else {
+        player.hp -= b.damage;
+      }
       player.invincible = 500;
       bullets.splice(bi, 1);
     }
@@ -729,9 +775,14 @@ function checkCollisions(dt) {
   for (const e of enemies) {
     if (circlesOverlap(e.x, e.y, e.radius, player.x, player.y, player.radius)) {
       if (player.invincible <= 0 && e.contactDmg > 0) {
-        // Continuous damage per second
-        player.hp -= e.contactDmg * dt;
-        player.invincible = 100;
+        if (player.bonusShield > 0) {
+          player.bonusShield = 0;
+          emitShieldBreak(player.x, player.y);
+          player.invincible = 800;
+        } else {
+          player.hp -= e.contactDmg * dt;
+          player.invincible = 100;
+        }
       }
     }
   }
@@ -739,13 +790,21 @@ function checkCollisions(dt) {
   // Pickups vs player
   for (let pi = pickups.length - 1; pi >= 0; pi--) {
     const pk = pickups[pi];
-    if (circlesOverlap(pk.x, pk.y, 20, player.x, player.y, player.radius)) {
-      player.hp = Math.min(player.maxHp, player.hp + 25);
-      // Emit green particles
-      for (let i = 0; i < 8; i++) {
+    if (circlesOverlap(pk.x, pk.y, 14, player.x, player.y, player.radius)) {
+      const col = pickupColor(pk.kind);
+      for (let i = 0; i < 10; i++) {
         const a = Math.random() * Math.PI * 2;
-        const speed = 60 + Math.random() * 100;
-        particles.push(spawnParticle(pk.x, pk.y, Math.cos(a) * speed, Math.sin(a) * speed, 4, '#66FF66', 400));
+        const spd = 60 + Math.random() * 120;
+        particles.push(spawnParticle(pk.x, pk.y, Math.cos(a) * spd, Math.sin(a) * spd, 4, col, 450));
+      }
+      if (pk.kind === 'heal') {
+        player.hp = Math.min(player.maxHp, player.hp + 25);
+      } else if (pk.kind === 'rapidfire') {
+        player.bonusRapidFire = 7000;
+      } else if (pk.kind === 'speed') {
+        player.bonusSpeed = 7000;
+      } else if (pk.kind === 'shield') {
+        player.bonusShield = 7000;
       }
       pickups.splice(pi, 1);
     }
@@ -812,29 +871,79 @@ function renderShadow(x, y, radius) {
 }
 
 function renderPickups() {
+  const t = Date.now() / 500;
   for (const pk of pickups) {
-    const t = Date.now() / 500;
     const bobY = Math.sin(t) * 4;
+    const col = pickupColor(pk.kind);
+    // Fade out in last 2s
+    const alpha = pk.life !== undefined ? Math.min(1, pk.life / 2000) : 1;
     ctx.save();
-    ctx.globalAlpha = 0.85 + Math.sin(t * 2) * 0.15;
-    drawSprite(ctx, pk.sprite, pk.x - 32, pk.y - 32 + bobY, pk.palette);
+    ctx.globalAlpha = (0.75 + Math.sin(t * 3) * 0.25) * alpha;
+
+    // Outer glow ring
+    ctx.beginPath();
+    ctx.arc(pk.x, pk.y + bobY, 14, 0, Math.PI * 2);
+    ctx.fillStyle = col;
+    ctx.fill();
+
+    // Inner bright core
+    ctx.globalAlpha = (0.9 + Math.sin(t * 3) * 0.1) * alpha;
+    ctx.beginPath();
+    ctx.arc(pk.x, pk.y + bobY, 7, 0, Math.PI * 2);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
+
+    // Label
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000000';
+    ctx.font = 'bold 7px monospace';
+    ctx.textAlign = 'center';
+    const labels = { heal: '+HP', rapidfire: 'RFR', speed: 'SPD', shield: 'SHD' };
+    ctx.fillText(labels[pk.kind] || '?', pk.x, pk.y + bobY + 3);
+    ctx.textAlign = 'left';
+
     ctx.restore();
   }
 }
 
+// Colors per enemy type (outer, mid, core)
+const ENEMY_CIRCLE_COLORS = {
+  grunt:   ['#881111', '#CC2222', '#FF6666'],
+  brute:   ['#883300', '#CC5500', '#FF8844'],
+  shooter: ['#550077', '#9900BB', '#DD55FF'],
+};
+
 function renderEnemies() {
   for (const e of enemies) {
     renderShadow(e.x, e.y + e.radius * 0.5, e.radius);
-    const spriteX = e.x - 32;
-    const spriteY = e.y - 32 + (e.type === 'brute' ? -4 : 0);
-    drawEnemySprite(ctx, e.sprite, spriteX, spriteY, e.palette, e.animFrame, e.hitFlash > 0);
+
+    const cols = ENEMY_CIRCLE_COLORS[e.type] || ['#880000', '#CC0000', '#FF4444'];
+    const flash = e.hitFlash > 0;
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+    ctx.fillStyle = flash ? '#FFFFFF' : cols[0];
+    ctx.fill();
+
+    // Mid ring
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.radius * 0.68, 0, Math.PI * 2);
+    ctx.fillStyle = flash ? '#FFAAAA' : cols[1];
+    ctx.fill();
+
+    // Core
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.radius * 0.35, 0, Math.PI * 2);
+    ctx.fillStyle = flash ? '#FFFFFF' : cols[2];
+    ctx.fill();
 
     // Health bar
     if (e.hp < e.maxHp) {
       const barW = e.radius * 2.2;
       const barH = 4;
       const barX = e.x - barW / 2;
-      const barY = e.y - e.radius - 10;
+      const barY = e.y - e.radius - 8;
       ctx.fillStyle = '#330000';
       ctx.fillRect(barX, barY, barW, barH);
       const ratio = Math.max(0, e.hp / e.maxHp);
@@ -852,22 +961,35 @@ function renderPlayer() {
   const cy = player.y + player.bobOffset;
   renderShadow(player.x, player.y + player.radius * 0.6, player.radius);
 
-  // Outer ring
+  // Shield ring (outside, pulsing purple)
+  if (player.bonusShield > 0) {
+    const pulse = 0.7 + 0.3 * Math.sin(Date.now() / 100);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.beginPath();
+    ctx.arc(player.x, cy, player.radius + 6, 0, Math.PI * 2);
+    ctx.strokeStyle = '#CC88FF';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Outer ring (yellow tint when rapid fire active)
   ctx.beginPath();
   ctx.arc(player.x, cy, player.radius, 0, Math.PI * 2);
-  ctx.fillStyle = '#2255AA';
+  ctx.fillStyle = player.bonusRapidFire > 0 ? '#AA6600' : '#2255AA';
   ctx.fill();
 
   // Mid ring
   ctx.beginPath();
   ctx.arc(player.x, cy, player.radius * 0.72, 0, Math.PI * 2);
-  ctx.fillStyle = '#4488FF';
+  ctx.fillStyle = player.bonusRapidFire > 0 ? '#FFAA00' : '#4488FF';
   ctx.fill();
 
-  // Bright core
+  // Bright core (cyan tint when speed active)
   ctx.beginPath();
   ctx.arc(player.x, cy, player.radius * 0.38, 0, Math.PI * 2);
-  ctx.fillStyle = '#88BBFF';
+  ctx.fillStyle = player.bonusSpeed > 0 ? '#44FFFF' : '#88BBFF';
   ctx.fill();
 }
 
@@ -973,6 +1095,23 @@ function renderHUD() {
   ctx.textAlign = 'right';
   ctx.fillText(`BEST: ${game.highScore}`, LOGICAL_W - 12, 36);
   ctx.textAlign = 'left';
+
+  // Active bonuses (bottom-left, above HP bar)
+  const bonuses = [
+    { key: 'bonusRapidFire', label: 'RAPID FIRE', color: '#FFDD00' },
+    { key: 'bonusSpeed',     label: 'SPEED',      color: '#44DDFF' },
+    { key: 'bonusShield',    label: 'SHIELD',      color: '#CC88FF' },
+  ];
+  let bonusY = LOGICAL_H - 50;
+  for (const b of bonuses) {
+    const remaining = player[b.key];
+    if (remaining <= 0) continue;
+    const secs = (remaining / 1000).toFixed(1);
+    ctx.fillStyle = b.color;
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(`${b.label}  ${secs}s`, 16, bonusY);
+    bonusY -= 14;
+  }
 
   // Pause hint (bottom-right)
   ctx.fillStyle = '#444466';
@@ -1142,6 +1281,7 @@ function gameLoop(timestamp) {
     updateSpawning(dt);
     updateEnemies(dt);
     updateBullets(dt);
+    updatePickups(dt);
     updateParticles(dt);
     checkCollisions(dt);
     checkLevelClear();
