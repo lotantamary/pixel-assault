@@ -87,6 +87,77 @@ canvas.addEventListener('mousedown', e => {
 canvas.addEventListener('mouseup', () => { mouse.down = false; });
 
 // ============================================================
+// TOUCH CONTROLS
+// ============================================================
+const touchState = {
+  left:  { active: false, id: null, startX: 0, startY: 0, x: 0, y: 0 },
+  right: { active: false, id: null },
+};
+
+function toLogical(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (LOGICAL_W / rect.width),
+    y: (clientY - rect.top)  * (LOGICAL_H / rect.height),
+  };
+}
+
+function handleTouchStart(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const pos = toLogical(t.clientX, t.clientY);
+    if (pos.x < LOGICAL_W / 2) {
+      if (!touchState.left.active) {
+        touchState.left = { active: true, id: t.identifier, startX: pos.x, startY: pos.y, x: pos.x, y: pos.y };
+        handleClick();
+      }
+    } else {
+      if (!touchState.right.active) {
+        touchState.right.active = true;
+        touchState.right.id = t.identifier;
+        mouse.x = pos.x;
+        mouse.y = pos.y;
+        mouse.down = true;
+        handleClick();
+      }
+    }
+  }
+}
+
+function handleTouchMove(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const pos = toLogical(t.clientX, t.clientY);
+    if (t.identifier === touchState.left.id) {
+      touchState.left.x = pos.x;
+      touchState.left.y = pos.y;
+    } else if (t.identifier === touchState.right.id) {
+      mouse.x = pos.x;
+      mouse.y = pos.y;
+    }
+  }
+}
+
+function handleTouchEnd(e) {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === touchState.left.id) {
+      touchState.left.active = false;
+      touchState.left.id = null;
+    } else if (t.identifier === touchState.right.id) {
+      touchState.right.active = false;
+      touchState.right.id = null;
+      mouse.down = false;
+    }
+  }
+}
+
+canvas.addEventListener('touchstart',  handleTouchStart, { passive: false });
+canvas.addEventListener('touchmove',   handleTouchMove,  { passive: false });
+canvas.addEventListener('touchend',    handleTouchEnd,   { passive: false });
+canvas.addEventListener('touchcancel', handleTouchEnd,   { passive: false });
+
+// ============================================================
 // SPRITE SYSTEM (Procedural Pixel Art)
 // ============================================================
 // Each sprite: 2D array of palette indices (0 = transparent)
@@ -589,6 +660,14 @@ function updatePlayer(dt) {
   if (keys['ArrowRight'] || keys['d'] || keys['D']) dx += 1;
   if (keys['ArrowUp'] || keys['w'] || keys['W']) dy -= 1;
   if (keys['ArrowDown'] || keys['s'] || keys['S']) dy += 1;
+
+  // Touch joystick
+  if (touchState.left.active) {
+    const jdx = touchState.left.x - touchState.left.startX;
+    const jdy = touchState.left.y - touchState.left.startY;
+    const jlen = Math.sqrt(jdx * jdx + jdy * jdy);
+    if (jlen > 8) { dx += jdx / jlen; dy += jdy / jlen; }
+  }
 
   player.moving = (dx !== 0 || dy !== 0);
 
@@ -1105,6 +1184,37 @@ function renderParticles() {
   }
 }
 
+function renderJoystick() {
+  if (!touchState.left.active) return;
+  const bx = touchState.left.startX;
+  const by = touchState.left.startY;
+  const dx = touchState.left.x - bx;
+  const dy = touchState.left.y - by;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const maxR = 45;
+  const sx = len > maxR ? bx + (dx / len) * maxR : touchState.left.x;
+  const sy = len > maxR ? by + (dy / len) * maxR : touchState.left.y;
+
+  ctx.save();
+  // Base ring
+  ctx.globalAlpha = 0.2;
+  ctx.beginPath();
+  ctx.arc(bx, by, maxR, 0, Math.PI * 2);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill();
+  ctx.globalAlpha = 0.4;
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Stick
+  ctx.globalAlpha = 0.6;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 20, 0, Math.PI * 2);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill();
+  ctx.restore();
+}
+
 function renderHUD() {
   // HP bar (bottom-left)
   const barX = 16, barY = LOGICAL_H - 30;
@@ -1405,6 +1515,7 @@ function gameLoop(timestamp) {
     renderGun();
     renderBullets();
     renderParticles();
+    renderJoystick();
     renderHUD();
 
   } else if (game.state === 'paused') {
@@ -1415,6 +1526,7 @@ function gameLoop(timestamp) {
     renderGun();
     renderBullets();
     renderParticles();
+    renderJoystick();
     renderHUD();
     renderPaused();
 
