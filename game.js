@@ -37,6 +37,9 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
     handleEnter();
   }
+  if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+    handlePause();
+  }
 });
 document.addEventListener('keyup', e => { keys[e.key] = false; });
 
@@ -444,6 +447,14 @@ function handleClick() {
   }
 }
 
+function handlePause() {
+  if (game.state === 'playing') {
+    game.state = 'paused';
+  } else if (game.state === 'paused') {
+    game.state = 'playing';
+  }
+}
+
 // ============================================================
 // COLLISION HELPERS
 // ============================================================
@@ -838,10 +849,26 @@ function renderPlayer() {
     const blink = Math.floor(Date.now() / 80) % 2;
     if (blink === 0) return;
   }
+  const cy = player.y + player.bobOffset;
   renderShadow(player.x, player.y + player.radius * 0.6, player.radius);
-  const spriteX = player.x - 32;
-  const spriteY = player.y - 32 + player.bobOffset;
-  drawSprite(ctx, 'player', spriteX, spriteY, 'player');
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(player.x, cy, player.radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#2255AA';
+  ctx.fill();
+
+  // Mid ring
+  ctx.beginPath();
+  ctx.arc(player.x, cy, player.radius * 0.72, 0, Math.PI * 2);
+  ctx.fillStyle = '#4488FF';
+  ctx.fill();
+
+  // Bright core
+  ctx.beginPath();
+  ctx.arc(player.x, cy, player.radius * 0.38, 0, Math.PI * 2);
+  ctx.fillStyle = '#88BBFF';
+  ctx.fill();
 }
 
 function renderGun() {
@@ -945,6 +972,13 @@ function renderHUD() {
   ctx.font = '11px monospace';
   ctx.textAlign = 'right';
   ctx.fillText(`BEST: ${game.highScore}`, LOGICAL_W - 12, 36);
+  ctx.textAlign = 'left';
+
+  // Pause hint (bottom-right)
+  ctx.fillStyle = '#444466';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('P — pause', LOGICAL_W - 12, LOGICAL_H - 10);
   ctx.textAlign = 'left';
 }
 
@@ -1075,6 +1109,21 @@ function renderLevelTransition() {
   ctx.textAlign = 'left';
 }
 
+function renderPaused() {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 48px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PAUSED', LOGICAL_W / 2, LOGICAL_H / 2 - 20);
+
+  ctx.fillStyle = '#AAAAAA';
+  ctx.font = '16px monospace';
+  ctx.fillText('Press P or Escape to resume', LOGICAL_W / 2, LOGICAL_H / 2 + 20);
+  ctx.textAlign = 'left';
+}
+
 // ============================================================
 // GAME LOOP
 // ============================================================
@@ -1115,6 +1164,17 @@ function gameLoop(timestamp) {
     renderBullets();
     renderParticles();
     renderHUD();
+
+  } else if (game.state === 'paused') {
+    renderBackground();
+    renderPickups();
+    renderEnemies();
+    renderPlayer();
+    renderGun();
+    renderBullets();
+    renderParticles();
+    renderHUD();
+    renderPaused();
 
   } else if (game.state === 'levelTransition') {
     updateLevelTransition(dt);
