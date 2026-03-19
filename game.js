@@ -3,6 +3,33 @@
 // ============================================================
 
 // ============================================================
+// FIREBASE CONFIG — replace with your Realtime Database URL
+// ============================================================
+const FIREBASE_URL = 'https://YOUR-PROJECT-default-rtdb.firebaseio.com';
+let leaderboard = [];  // [{name, score}] sorted desc, up to 10
+
+async function fetchLeaderboard() {
+  try {
+    const res = await fetch(`${FIREBASE_URL}/scores.json?orderBy="score"&limitToLast=10`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data) { leaderboard = []; return; }
+    leaderboard = Object.values(data).sort((a, b) => b.score - a.score).slice(0, 10);
+  } catch (e) { /* Firebase not configured or offline */ }
+}
+
+async function submitScore(name, score) {
+  try {
+    await fetch(`${FIREBASE_URL}/scores.json`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, score, ts: Date.now() }),
+    });
+    await fetchLeaderboard();
+  } catch (e) { /* silently fail */ }
+}
+
+// ============================================================
 // CANVAS SETUP
 // ============================================================
 const canvas = document.getElementById('gameCanvas');
@@ -30,6 +57,7 @@ const keys = {};
 const mouse = { x: LOGICAL_W / 2, y: LOGICAL_H / 2, down: false };
 
 document.addEventListener('keydown', e => {
+  if (e.target.id === 'nameInput') return;  // let the input handle its own keys
   keys[e.key] = true;
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) {
     e.preventDefault();
@@ -431,14 +459,42 @@ function initGame() {
 }
 
 // ============================================================
+// NAME OVERLAY
+// ============================================================
+function showNameOverlay() {
+  const overlay = document.getElementById('nameOverlay');
+  overlay.style.display = 'block';
+  const input = document.getElementById('nameInput');
+  input.value = '';
+  setTimeout(() => input.focus(), 50);
+}
+
+function hideNameOverlay() {
+  document.getElementById('nameOverlay').style.display = 'none';
+}
+
+function doSubmitScore() {
+  const name = document.getElementById('nameInput').value.trim() || 'Anonymous';
+  hideNameOverlay();
+  submitScore(name, game.score);
+  game.state = 'menu';
+}
+
+document.getElementById('submitBtn').addEventListener('click', doSubmitScore);
+document.getElementById('skipBtn').addEventListener('click', () => {
+  hideNameOverlay();
+  game.state = 'menu';
+});
+
+// ============================================================
 // INPUT HANDLERS
 // ============================================================
 function handleEnter() {
   if (game.state === 'menu') {
     game.state = 'playing';
     initGame();
-  } else if (game.state === 'gameOver') {
-    game.state = 'menu';
+  } else if (game.state === 'enterName') {
+    doSubmitScore();
   }
 }
 
@@ -446,8 +502,6 @@ function handleClick() {
   if (game.state === 'menu') {
     game.state = 'playing';
     initGame();
-  } else if (game.state === 'gameOver') {
-    game.state = 'menu';
   }
 }
 
@@ -1123,41 +1177,97 @@ function renderHUD() {
 
 function renderMenu() {
   renderBackground();
-
-  // Title
-  ctx.fillStyle = '#FFEE00';
-  ctx.font = 'bold 48px monospace';
   ctx.textAlign = 'center';
+
+  // ── Left half (0–390): title + controls ──
+  const lx = 195;
+
+  ctx.fillStyle = '#FFEE00';
+  ctx.font = 'bold 38px monospace';
   ctx.shadowColor = '#FF8800';
-  ctx.shadowBlur = 20;
-  ctx.fillText('PIXEL ASSAULT', LOGICAL_W / 2, 180);
+  ctx.shadowBlur = 18;
+  ctx.fillText('PIXEL', lx, 110);
+  ctx.fillText('ASSAULT', lx, 155);
   ctx.shadowBlur = 0;
 
-  // Subtitle
   ctx.fillStyle = '#88BBFF';
-  ctx.font = '16px monospace';
-  ctx.fillText('Top-Down Shooter', LOGICAL_W / 2, 215);
-
-  // Controls
-  ctx.fillStyle = '#AAAAAA';
   ctx.font = '13px monospace';
-  ctx.fillText('WASD / Arrow Keys — Move', LOGICAL_W / 2, 290);
-  ctx.fillText('Mouse — Aim', LOGICAL_W / 2, 312);
-  ctx.fillText('Left Click — Fire', LOGICAL_W / 2, 334);
-  ctx.fillText('Survive 5 waves to complete the game!', LOGICAL_W / 2, 356);
+  ctx.fillText('Top-Down Shooter', lx, 185);
 
-  // High score
+  ctx.fillStyle = '#666688';
+  ctx.font = '11px monospace';
+  ctx.fillText('— CONTROLS —', lx, 230);
+
+  ctx.fillStyle = '#AAAAAA';
+  ctx.font = '12px monospace';
+  ctx.fillText('WASD / Arrows — Move', lx, 255);
+  ctx.fillText('Mouse — Aim', lx, 273);
+  ctx.fillText('Left Click — Fire', lx, 291);
+  ctx.fillText('P / Esc — Pause', lx, 309);
+  ctx.fillText('Survive 5 waves!', lx, 333);
+
   ctx.fillStyle = '#FFEE00';
-  ctx.font = '14px monospace';
-  ctx.fillText(`HIGH SCORE: ${game.highScore}`, LOGICAL_W / 2, 400);
+  ctx.font = '13px monospace';
+  ctx.fillText(`HIGH SCORE: ${game.highScore}`, lx, 375);
 
-  // Blinking press enter
+  // Blinking prompt
   game.blinkTimer += 16;
   if (game.blinkTimer >= 500) { game.blinkTimer = 0; game.blinkVisible = !game.blinkVisible; }
   if (game.blinkVisible) {
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 18px monospace';
-    ctx.fillText('PRESS ENTER OR CLICK TO START', LOGICAL_W / 2, 460);
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText('PRESS ENTER TO START', lx, 435);
+  }
+
+  // ── Divider ──
+  ctx.strokeStyle = '#223366';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(400, 20);
+  ctx.lineTo(400, LOGICAL_H - 20);
+  ctx.stroke();
+
+  // ── Right half (410–800): leaderboard ──
+  const rx = 605;
+
+  ctx.fillStyle = '#FFEE00';
+  ctx.font = 'bold 16px monospace';
+  ctx.shadowColor = '#AA7700';
+  ctx.shadowBlur = 8;
+  ctx.fillText('LEADERBOARD', rx, 60);
+  ctx.shadowBlur = 0;
+
+  ctx.strokeStyle = '#554400';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(420, 70);
+  ctx.lineTo(790, 70);
+  ctx.stroke();
+
+  if (leaderboard.length === 0) {
+    ctx.fillStyle = '#555577';
+    ctx.font = '13px monospace';
+    ctx.fillText('Loading...', rx, 120);
+  } else {
+    const rankColors = ['#FFD700', '#C0C0C0', '#CD7F32'];
+    for (let i = 0; i < leaderboard.length; i++) {
+      const entry = leaderboard[i];
+      const y = 98 + i * 44;
+      ctx.fillStyle = rankColors[i] || '#CCCCCC';
+      ctx.font = `bold ${i < 3 ? 14 : 13}px monospace`;
+
+      // Rank number
+      ctx.textAlign = 'right';
+      ctx.fillText(`${i + 1}.`, 450, y);
+
+      // Name (truncated to 12 chars)
+      ctx.textAlign = 'left';
+      ctx.fillText((entry.name || '???').substring(0, 12), 458, y);
+
+      // Score
+      ctx.textAlign = 'right';
+      ctx.fillText(entry.score.toString(), 790, y);
+    }
   }
 
   ctx.textAlign = 'left';
@@ -1174,36 +1284,26 @@ function renderGameOver() {
   ctx.textAlign = 'center';
   ctx.shadowColor = '#FF0000';
   ctx.shadowBlur = 25;
-  ctx.fillText('GAME OVER', LOGICAL_W / 2, 200);
+  ctx.fillText('GAME OVER', LOGICAL_W / 2, 220);
   ctx.shadowBlur = 0;
 
   ctx.fillStyle = '#FFFFFF';
   ctx.font = '22px monospace';
-  ctx.fillText(`SCORE: ${game.score}`, LOGICAL_W / 2, 270);
+  ctx.fillText(`SCORE: ${game.score}`, LOGICAL_W / 2, 285);
 
-  if (game.score > game.highScore) {
-    game.highScore = game.score;
-    localStorage.setItem('pixelAssaultHigh', game.highScore);
+  if (game.score >= game.highScore && game.score > 0) {
     ctx.fillStyle = '#FFEE00';
     ctx.font = 'bold 18px monospace';
-    ctx.fillText('NEW HIGH SCORE!', LOGICAL_W / 2, 310);
+    ctx.fillText('NEW HIGH SCORE!', LOGICAL_W / 2, 325);
   } else {
     ctx.fillStyle = '#AAAAAA';
     ctx.font = '16px monospace';
-    ctx.fillText(`HIGH SCORE: ${game.highScore}`, LOGICAL_W / 2, 310);
+    ctx.fillText(`BEST: ${game.highScore}`, LOGICAL_W / 2, 325);
   }
 
   ctx.fillStyle = '#88BBFF';
   ctx.font = '14px monospace';
-  ctx.fillText(`Reached Level ${game.level}`, LOGICAL_W / 2, 350);
-
-  game.blinkTimer += 16;
-  if (game.blinkTimer >= 500) { game.blinkTimer = 0; game.blinkVisible = !game.blinkVisible; }
-  if (game.blinkVisible) {
-    ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 18px monospace';
-    ctx.fillText('PRESS ENTER OR CLICK TO RETURN', LOGICAL_W / 2, 430);
-  }
+  ctx.fillText(`Reached Level ${game.level}`, LOGICAL_W / 2, 360);
 
   ctx.textAlign = 'left';
 }
@@ -1267,6 +1367,7 @@ function renderPaused() {
 // GAME LOOP
 // ============================================================
 let lastTime = 0;
+fetchLeaderboard();
 
 function gameLoop(timestamp) {
   let dt = (timestamp - lastTime) / 1000;
@@ -1291,9 +1392,8 @@ function gameLoop(timestamp) {
         game.highScore = game.score;
         localStorage.setItem('pixelAssaultHigh', game.highScore);
       }
-      game.state = 'gameOver';
-      game.blinkTimer = 0;
-      game.blinkVisible = true;
+      game.state = 'enterName';
+      showNameOverlay();
     }
 
     renderBackground();
@@ -1320,7 +1420,7 @@ function gameLoop(timestamp) {
     updateLevelTransition(dt);
     updateParticles(dt);
     renderLevelTransition();
-  } else if (game.state === 'gameOver') {
+  } else if (game.state === 'enterName') {
     renderGameOver();
   }
 

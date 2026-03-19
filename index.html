@@ -22,10 +22,75 @@
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
+    #nameOverlay {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 20, 0.95);
+      border: 2px solid #FFEE00;
+      padding: 28px 36px;
+      text-align: center;
+      font-family: monospace;
+      color: #FFFFFF;
+      min-width: 280px;
+      z-index: 10;
+    }
+    #nameOverlay h2 {
+      color: #FFEE00;
+      font-size: 18px;
+      margin-bottom: 6px;
+      letter-spacing: 2px;
+    }
+    #nameOverlay p {
+      color: #AAAAAA;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+    #nameInput {
+      background: #000030;
+      border: 1px solid #4488FF;
+      color: #FFFFFF;
+      font-family: monospace;
+      font-size: 16px;
+      padding: 7px 12px;
+      width: 210px;
+      text-align: center;
+      outline: none;
+    }
+    #nameInput:focus { border-color: #FFEE00; }
+    .overlay-buttons {
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    .overlay-buttons button {
+      font-family: monospace;
+      font-size: 14px;
+      padding: 8px 22px;
+      cursor: pointer;
+      border: none;
+      letter-spacing: 1px;
+    }
+    #submitBtn { background: #FFEE00; color: #000; }
+    #submitBtn:hover { background: #FFCC00; }
+    #skipBtn { background: #222244; color: #AAAAAA; border: 1px solid #444466; }
+    #skipBtn:hover { background: #333366; color: #FFFFFF; }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="nameOverlay">
+    <h2>SUBMIT SCORE</h2>
+    <p>Enter your name for the global leaderboard</p>
+    <input id="nameInput" type="text" maxlength="16" placeholder="Your name" autocomplete="off">
+    <div class="overlay-buttons">
+      <button id="submitBtn">SUBMIT</button>
+      <button id="skipBtn">SKIP</button>
+    </div>
+  </div>
   <script src="game.js"></script>
 </body>
 </html>
