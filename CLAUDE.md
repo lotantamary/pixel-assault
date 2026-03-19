@@ -12,15 +12,25 @@ start index.html   # Windows
 
 ## Git & GitHub Workflow
 
-Every meaningful change must be committed with a clean message and pushed:
+**Commit and push after every meaningful unit of work.** Do not batch unrelated changes into one commit, and do not leave the remote behind. The goal is that GitHub always reflects the current working state so progress is never lost and any change can be reverted.
+
+When to commit:
+- After completing a feature or behaviour change
+- After a bug fix
+- After any refactor, even small ones
+- Before starting a risky or experimental change
 
 ```bash
-git add <specific-files>
-git commit -m "short summary
+git add <specific-files>   # never `git add -A` blindly
+git commit -m "short imperative summary
 
 - bullet detail if needed"
 git push
 ```
+
+Commit message rules:
+- First line: imperative mood, ≤72 chars (e.g. `Add double-jump mechanic`, `Fix grunt pathfinding at canvas edge`)
+- Body bullets (optional): explain *what changed and why*, not *how*
 
 Remote: `https://github.com/lotantamary/pixel-assault` (private), branch `master`.
 
