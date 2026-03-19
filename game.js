@@ -106,7 +106,10 @@ function handleTouchStart(e) {
   e.preventDefault();
   for (const t of e.changedTouches) {
     const pos = toLogical(t.clientX, t.clientY);
-    if (pos.x < LOGICAL_W / 2) {
+    // Split by visual center of the rendered canvas, not logical coordinates
+    const rect = canvas.getBoundingClientRect();
+    const isLeft = t.clientX < rect.left + rect.width / 2;
+    if (isLeft) {
       if (!touchState.left.active) {
         touchState.left = { active: true, id: t.identifier, startX: pos.x, startY: pos.y, x: pos.x, y: pos.y };
         handleClick();
@@ -1196,22 +1199,27 @@ function renderJoystick() {
   const sy = len > maxR ? by + (dy / len) * maxR : touchState.left.y;
 
   ctx.save();
-  // Base ring
-  ctx.globalAlpha = 0.2;
+  // Base ring fill
+  ctx.globalAlpha = 0.15;
   ctx.beginPath();
   ctx.arc(bx, by, maxR, 0, Math.PI * 2);
-  ctx.fillStyle = '#FFFFFF';
+  ctx.fillStyle = '#4488FF';
   ctx.fill();
-  ctx.globalAlpha = 0.4;
+  // Base ring border
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = '#4488FF';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+  // Stick
+  ctx.globalAlpha = 0.75;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 22, 0, Math.PI * 2);
+  ctx.fillStyle = '#88BBFF';
+  ctx.fill();
+  ctx.globalAlpha = 0.9;
   ctx.strokeStyle = '#FFFFFF';
   ctx.lineWidth = 2;
   ctx.stroke();
-  // Stick
-  ctx.globalAlpha = 0.6;
-  ctx.beginPath();
-  ctx.arc(sx, sy, 20, 0, Math.PI * 2);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fill();
   ctx.restore();
 }
 
