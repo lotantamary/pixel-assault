@@ -5,7 +5,7 @@
 // ============================================================
 // FIREBASE CONFIG — replace with your Realtime Database URL
 // ============================================================
-const FIREBASE_URL = 'https://YOUR-PROJECT-default-rtdb.firebaseio.com';
+const FIREBASE_URL = 'https://pixel-assault-leaderboard-default-rtdb.firebaseio.com/';
 let leaderboard = [];  // [{name, score}] sorted desc, up to 10
 
 async function fetchLeaderboard() {
